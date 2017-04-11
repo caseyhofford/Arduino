@@ -17,6 +17,8 @@ const int hygrometer = A0;
 unsigned long msStart;
 unsigned long msLast;
 
+int duration = 24; //length to record in hours
+
 uint16_t address = 0;
 const uint32_t totalKBytes = 32;         //for read and write test functions
 extEEPROM eep(kbits_256, 1, 64);         //device size, number of devices, page size
@@ -69,26 +71,24 @@ void loop() {
   float humidity;
   double lux;//stores the lux value
   float moisture;
-  Serial.print("Current time:   ");
+  /*Serial.print("Current time:   ");
   Serial.println(millis());
   Serial.print("Start:  ");
   Serial.println(msStart);
   Serial.print("Last:  ");
   Serial.println(msLast);
   Serial.print("Diff:  ");
-  Serial.println(millis()-msLast);
+  Serial.println(millis()-msLast);*/
   Sums sums{
     0,0,0,0,0,0,0,0,
   };
-  while(millis()-msLast < 16000) {
-//    float temp[36];
-//    float humidity[36];
-//    float lux[36];
-//    float moisture[36];
-//    Serial.println(temp[36]);
+  while(millis()-msLast < ((duration*60*60)/1.6)) {
+    if(Serial.available() > 0){
+      sendData();
+    }
     float t = dht.readTemperature();
     float h = dht.readHumidity();
-
+    Serial.println(t);
     int data0;//these strore individual values from the light sensor that are used by the light library for lux calculation.
     int data1;
 
@@ -124,25 +124,15 @@ void loop() {
 //    Serial.println(lux);
 //    Serial.print("Soil moisture: ");
 //    Serial.println(moisture);
-    Serial.print("T-");
-    Serial.print((16000-(millis()-msLast))/1000);
-    Serial.println(" seconds");
-    Serial.print("(1600-(");
-    Serial.print(millis());
-    Serial.print("-");
-    Serial.print(msLast);
-    Serial.println("))/1000");
     delay(5000);
   }
-  Serial.print("Reading loop over: ");
-  Serial.println(millis());
   msLast = millis();//records time at which the last reading was taken
   //unsigned long mseconds = msStart-msLast; //records the time from the start that the reading was taken
   Measurement reading = {
     sums.temp/sums.temp_count, sums.humidity/sums.humidity_count, sums.lux/sums.lux_count, sums.moisture/sums.moisture_count, millis()
   };
 
-  Serial.print("Reading size: ");
+  /*Serial.print("Reading size: ");
   Serial.println(sizeof(reading));
   Serial.println("*************Into Memory**************");
   Serial.print(reading.temp);
@@ -153,15 +143,15 @@ void loop() {
   Serial.print(":::");
   Serial.print(reading.moisture);
   Serial.print(":::");
-  Serial.println(reading.time);
+  Serial.println(reading.time);*/
 
   uint8_t *ptr =  (uint8_t*)&reading;
   eep.write(address, ptr, sizeof(reading));
 
-  Serial.println("********************From Memory*********************");
   Measurement stored;
   uint8_t *memPtr =  (uint8_t*)&stored;
   eep.read(address, memPtr, 20);
+  /*Serial.println("********************From Memory*********************");
   Serial.print(stored.temp);
   Serial.print(":::");
   Serial.print(stored.humidity);
@@ -170,7 +160,7 @@ void loop() {
   Serial.print(":::");
   Serial.print(stored.moisture);
   Serial.print(":::");
-  Serial.println(stored.time);
+  Serial.println(stored.time);*/
 
   if(address <= 32747){
    address += sizeof(reading);
@@ -181,6 +171,36 @@ void loop() {
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sleep_mode();
+  }
+}
+
+void sendData() {
+  int send_address = 0;
+  char request = Serial.read();
+  Serial.println(request);
+  if(request = 1) {
+    while (send_address<32760){
+      Measurement reading;
+      uint8_t *ptr = (uint8_t*)&reading;
+      uint8_t status = eep.read(send_address, ptr, 20);
+      if (status){
+        Serial.print("error reading EEPROM at ");
+        Serial.println(send_address);
+      }
+      Serial.print(reading.temp);
+      Serial.print(",");
+      Serial.print(reading.humidity);
+      Serial.print(",");
+      Serial.print(reading.lux);
+      Serial.print(",");
+      Serial.print(reading.moisture);
+      Serial.print(",");
+      Serial.print(reading.time);
+      Serial.print(",");
+      Serial.println(send_address);
+      send_address += sizeof(reading);
+      delay(10);
+    }
   }
 }
 
