@@ -173,4 +173,3 @@ int readHygrometer() {
   value = map(value,400,1023,10000,0);
   return value;
 }
-
