@@ -2,13 +2,14 @@
 #include <Wire.h>
 #include <DHT.h>
 #include <DHT_U.h>
-#include <EEPROM.h>
-#include <extEEPROM.h>
 #include <avr/sleep.h>
+#include <SPI.h>
+#include <SD.h>
+
+File myFile;
 
 #include "DHT.h"
 
-#define disk1 0x50
 #define DHTPIN 2     // what pin we're connected to
 #define DHTTYPE DHT22
 
@@ -18,10 +19,6 @@ unsigned long msStart;
 unsigned long msLast;
 
 int duration = 24; //length to record in hours
-
-uint16_t address = 0;
-const uint32_t totalKBytes = 32;         //for read and write test functions
-extEEPROM eep(kbits_256, 1, 64);         //device size, number of devices, page size
 
 SFE_TSL2561 light;
 boolean gain;
@@ -57,16 +54,10 @@ void setup() {
   dht.begin();
   msStart = millis();
   msLast = msStart;
-  uint8_t eepStatus = eep.begin(twiClock400kHz);
-  if (eepStatus) {
-    Serial.print(F("extEEPROM.begin() failed, status = "));
-    Serial.println(eepStatus);
-    while (1);
-  }
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  //put your main code here, to run repeatedly:
   float temp;
   float humidity;
   double lux;//stores the lux value
@@ -82,7 +73,7 @@ void loop() {
   Sums sums{
     0,0,0,0,0,0,0,0,
   };
-  while(millis()-msLast < ((duration*60*60)/1.6)) {
+  while(millis()-msLast < ((duration*60*60)/1.6)) {//1.6 = 32000(size of rom)/20(size of Measurement struct)*1000(seconds to milliseconds)
     if(Serial.available() > 0){
       sendData();
     }
@@ -128,10 +119,6 @@ void loop() {
   }
   msLast = millis();//records time at which the last reading was taken
   //unsigned long mseconds = msStart-msLast; //records the time from the start that the reading was taken
-  Measurement reading = {
-    sums.temp/sums.temp_count, sums.humidity/sums.humidity_count, sums.lux/sums.lux_count, sums.moisture/sums.moisture_count, millis()
-  };
-
   /*Serial.print("Reading size: ");
   Serial.println(sizeof(reading));
   Serial.println("*************Into Memory**************");
@@ -145,8 +132,9 @@ void loop() {
   Serial.print(":::");
   Serial.println(reading.time);*/
 
-  uint8_t *ptr =  (uint8_t*)&reading;
-  eep.write(address, ptr, sizeof(reading));
+  myFile = SD.open("data.csv", FILE_WRITE);
+  myFile.println(sums.temp/sums.temp_count+','+ sums.humidity/sums.humidity_count+','+sums.lux/sums.lux_count+','+sums.moisture/sums.moisture_count+','+millis());
+  myFile.close();
   /*Serial.println("********************From Memory*********************");
   Serial.print(stored.temp);
   Serial.print(":::");
@@ -158,45 +146,23 @@ void loop() {
   Serial.print(":::");
   Serial.println(stored.time);*/
 
-  if(address <= 32747){
-   address += sizeof(reading);
-   //uint8_t *addressPtr = (uint8_t)&address;
-   //eep.write(0,addressPtr,2);//the first 2 bytes of eeprom store the next available address, this allows you to distinguish old and new data in case of a power loss.
-  }
-  else{
+  /*if(millis()>(duration*60*60*1000)){
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sleep_mode();
-  }
+  }*/
 }
 
 void sendData() {
-  int send_address = 0;
-  char request = Serial.read();
-  Serial.println(request);
-  if(request = 1) {
-    while (send_address<32760){
-      Measurement reading;
-      uint8_t *ptr = (uint8_t*)&reading;
-      uint8_t status = eep.read(send_address, ptr, 20);
-      if (status){
-        Serial.print("error reading EEPROM at ");
-        Serial.println(send_address);
-      }
-      Serial.print(reading.temp);
-      Serial.print(",");
-      Serial.print(reading.humidity);
-      Serial.print(",");
-      Serial.print(reading.lux);
-      Serial.print(",");
-      Serial.print(reading.moisture);
-      Serial.print(",");
-      Serial.print(reading.time);
-      Serial.print(",");
-      Serial.println(send_address);
-      send_address += sizeof(reading);
-      delay(10);
+  myFile = SD.open('data.csv');
+  if(myFile) {
+    while(myFile.available()) {
+      Serial.write(myFile.read());
     }
+    myFile.close();
+  }
+  else {
+    Serial.println('Error: No file available');
   }
 }
 
@@ -207,3 +173,4 @@ int readHygrometer() {
   value = map(value,400,1023,10000,0);
   return value;
 }
+
